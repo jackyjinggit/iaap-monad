@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>IAAP Monad Adapter — Agent Trust Engine</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="IAAP — anchor AI agent flattery / halo / 装腔 flags on Monad Testnet." />
+  <style>
+    :root {
+      --bg: #0c0d10; --fg: #fafafa; --muted: #9ca3af; --accent: #ff6b00;
+      --good: #10b981; --warn: #f59e0b; --bad: #ef4444;
+      --card-bg: #15171c; --card-border: #2a2d35;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 0;
+      background: var(--bg); color: var(--fg);
+      font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+      line-height: 1.55;
+    }
+    main { max-width: 920px; margin: 0 auto; padding: 28px 22px 64px; }
+    h1 { font-size: 32px; margin: 0 0 8px; }
+    .tag { color: var(--accent); font-weight: 600; }
+    .sub { color: var(--muted); font-size: 14px; margin: 0 0 28px; }
+    section {
+      background: var(--card-bg); border: 1px solid var(--card-border);
+      border-radius: 12px; padding: 18px 20px; margin-bottom: 18px;
+    }
+    textarea {
+      width: 100%; height: 160px;
+      background: #0c0d10; color: var(--fg);
+      border: 1px solid var(--card-border); border-radius: 8px;
+      padding: 12px; font-family: ui-monospace, monospace; font-size: 14px;
+      resize: vertical;
+    }
+    button {
+      cursor: pointer; font-weight: 600;
+      background: var(--accent); color: white;
+      border: 0; border-radius: 8px;
+      padding: 11px 18px; font-size: 14px;
+      transition: filter .15s;
+    }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    button:hover:not(:disabled) { filter: brightness(1.08); }
+    button.secondary {
+      background: transparent; color: var(--fg);
+      border: 1px solid var(--card-border);
+    }
+    pre {
+      background: #07080b; border: 1px solid var(--card-border);
+      border-radius: 8px; padding: 14px;
+      overflow: auto; font-size: 13px;
+    }
+    .severity {
+      display: inline-block; padding: 3px 10px; border-radius: 12px;
+      font-weight: 700; font-size: 13px;
+    }
+    .sev-0 { background: #064e3b; color: #d1fae5; }
+    .sev-1, .sev-2 { background: #78350f; color: #fef3c7; }
+    .sev-3 { background: #7c2d12; color: #ffedd5; }
+    .sev-4, .sev-5 { background: #7f1d1d; color: #fee2e2; }
+    .signal { color: var(--warn); margin: 4px 0; }
+    .ok { color: var(--good); }
+    .err { color: var(--bad); }
+    code { background: #1a1d23; padding: 1px 6px; border-radius: 4px; font-size: 13px; }
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .small { font-size: 12px; color: var(--muted); }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1><span class="tag">IAAP Monad Adapter</span></h1>
+    <p class="sub">First on-chain Agent Trust Engine · Monad Testnet · Metropolis hackathon, Track 04.</p>
+  </header>
+
+  <section>
+    <h2>1 · Paste a transcript to detect</h2>
+    <p class="small">Paste a chat transcript between a user and an AI agent. IAAP detects 5 stages: <code>flattery</code>, <code>halo effect</code>, <code>装腔</code>, <code>sycophancy</code>, <code>truth suppression</code>. Detection runs entirely in your browser — nothing leaves your device.</p>
+    <textarea id="transcript" placeholder="User: ...&#10;Agent: ..."></textarea>
+    <div class="row" style="margin-top: 12px;">
+      <button id="run">Run IAAP detection</button>
+      <button id="flag" class="secondary" disabled>Flag to Monad</button>
+      <span id="status" class="small"></span>
+    </div>
+  </section>
+
+  <section>
+    <h2>2 · Detection result</h2>
+    <pre id="result">— Run detection to see ID-Score and severity (0–5) —</pre>
+  </section>
+
+  <section>
+    <h2>3 · On-chain provenance</h2>
+    <pre id="chain">— Flag to Monad to anchor this conversation's hash on Monad Testnet —</pre>
+    <p class="small">
+      Contract address (Monad Testnet):
+      <code id="contract-addr">(set after deploy — see docs/DEPLOYMENT.md)</code>
+    </p>
+  </section>
+
+  <footer style="margin-top: 32px; color: var(--muted); font-size: 12px;">
+    <p>Built by <strong>TrueFellow · Jacky Jiang</strong>. Privacy-first: only the 32-byte
+      content-hash and the 0–5 severity score leave the device; the original transcript
+      stays local. <a href="https://github.com/jackyjinggit/iaap-monad" style="color:var(--accent)">Source on GitHub</a>.</p>
+  </footer>
+</main>
+
+<!-- IAAP detection engine (offline, vendored) -->
+<script src="iaap-engine.js"></script>
+<!-- ethers v6 (MetaMask / wallet integration) -->
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
+<script>
+  // ────────────────────────────────────────
+  //  Constants
+  // ────────────────────────────────────────
+  const MONAD_TESTNET = {
+    chainIdHex: "0x279f",  // 10143
+    chainName: "Monad Testnet",
+    rpcUrl:    "https://testnet-rpc.monad.xyz",
+    explorer:  "https://testnet.monadexplorer.com"
+  };
+
+  // Set after deploy (蒋平 runs scripts/deploy.js → records address here).
+  // Before deploy, the demo shows "in progress" gracefully.
+  const MONOREP_ADAPTER_ADDRESS = "";  // <-- 蒋平 scripts/deploy.js 后填
+
+  // MonorepAdapter minimal ABI (only flagContent + events).
+  const MONOREP_ADAPTER_ABI = [
+    "function flagContent(bytes32 contentHash, uint8 severityScore) external",
+    "function getReputation(address agent) external view returns (uint256 totalScore, uint256 flagCount)",
+    "function getTotalFlags() external view returns (uint256)",
+    "event IAAPFlagSubmitted(bytes32 indexed contentHash, address indexed submitter, uint8 indexed severityScore, uint256 timestamp)",
+    "event IAAPReputationUpdated(address indexed agent, uint256 totalScore, uint256 flagCount, uint256 timestamp)"
+  ];
+
+  // ────────────────────────────────────────
+  //  Detection — calls into offline iaap-engine.js
+  // ────────────────────────────────────────
+  const $transcript = document.getElementById("transcript");
+  const $run        = document.getElementById("run");
+  const $flag       = document.getElementById("flag");
+  const $status     = document.getElementById("status");
+  const $result     = document.getElementById("result");
+  const $chain      = document.getElementById("chain");
+  const $addr       = document.getElementById("contract-addr");
+
+  let lastDetection = null;
+
+  $run.addEventListener("click", () => {
+    const text = $transcript.value.trim();
+    if (!text) { $status.textContent = "❌ empty"; return; }
+    lastDetection = IAAPEngine.detect(text);  // from iaap-engine.js
+    renderDetection(lastDetection);
+    $flag.disabled = false;
+    $status.textContent = "✅ detected";
+  });
+
+  function renderDetection(d) {
+    const sevClass = `sev-${Math.min(d.severity, 5)}`;
+    const signals = d.signals.map(s => `<div class="signal">• ${s}</div>`).join("");
+    $result.textContent = "";  // reset
+    $result.innerHTML = [
+      `ID-Score : ${d.idScore.toFixed(2)}  (0 = clean, 1 = severe)`,
+      `Severity : <span class="severity ${sevClass}">${d.severity} / 5</span>`,
+      ``,
+      `Detected signals (${d.signals.length}):`,
+      signals || "<div class='ok'>no flattery / halo / 装腔 signals</div>",
+      ``,
+      `Suggested stage contributions:`,
+      ...Object.entries(d.stageContributions).map(([k,v]) =>
+        `  ${k.padEnd(20)} ${v.toFixed(2)}`)
+    ].join("\n");
+  }
+
+  // ────────────────────────────────────────
+  //  Monad wallet + flagContent()
+  // ────────────────────────────────────────
+  $addr.textContent = MONOREP_ADAPTER_ADDRESS
+    ? MONOREP_ADAPTER_ADDRESS
+    : "(deploy pending — see docs/DEPLOYMENT.md)";
+
+  async function ensureMonadTestnet() {
+    if (!window.ethereum) throw new Error("MetaMask / browser wallet not detected");
+    const current = await window.ethereum.request({ method: "eth_chainId" });
+    if (current !== MONAD_TESTNET.chainIdHex) {
+      try {
+        await window.ethereum.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: MONAD_TESTNET.chainIdHex }]
+        });
+      } catch (err) {
+        if (err.code === 4902) {
+          await window.ethereum.request({
+            method: "wallet_addEthereumChain",
+            params: [{
+              chainId: MONAD_TESTNET.chainIdHex,
+              chainName: MONAD_TESTNET.chainName,
+              rpcUrls: [MONAD_TESTNET.rpcUrl],
+              blockExplorerUrls: [MONAD_TESTNET.explorer + "/"],
+              nativeCurrency: { name: "Monad", symbol: "MON", decimals: 18 }
+            }]
+          });
+        } else {
+          throw err;
+        }
+      }
+    }
+  }
+
+  // SHA-256 via WebCrypto; we hash the transcript bytes → 32-byte content-hash.
+  async function sha256Hex(input) {
+    const buf = new TextEncoder().encode(input);
+    const hash = await crypto.subtle.digest("SHA-256", buf);
+    return "0x" + Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  $flag.addEventListener("click", async () => {
+    if (!lastDetection) { $status.textContent = "❌ run detection first"; return; }
+    if (!MONOREP_ADAPTER_ADDRESS) {
+      $status.innerHTML = '<span class="err">Contract not yet deployed — finish docs/DEPLOYMENT.md first.</span>';
+      return;
+    }
+    try {
+      $flag.disabled = true;
+      $status.textContent = "⏳ requesting wallet …";
+      await ensureMonadTestnet();
+
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer   = await provider.getSigner();
+      const contract = new ethers.Contract(MONOREP_ADAPTER_ADDRESS, MONOREP_ADAPTER_ABI, signer);
+
+      const hashHex = await sha256Hex($transcript.value);
+      const severity = lastDetection.severity;
+      $status.textContent = "⏳ sending flagContent() …";
+
+      const tx = await contract.flagContent(hashHex, severity);
+      $status.textContent = "⏳ waiting for confirmation …";
+      const rcpt = await tx.wait();
+
+      $chain.innerHTML = [
+        `txHash  : <code>${rcpt.hash}</code>`,
+        `block   : ${rcpt.blockNumber}`,
+        `from    : <code>${rcpt.from}</code>`,
+        `Explorer: <a href="${MONAD_TESTNET.explorer}/tx/${rcpt.hash}" target="_blank" rel="noreferrer" style="color:var(--accent)">${MONAD_TESTNET.explorer}/tx/${rcpt.hash}</a>`,
+        ``,
+        `content-hash: <code>${hashHex}</code>`,
+        `severity    : ${severity} / 5`
+      ].join("\n");
+      $status.innerHTML = '<span class="ok">✅ anchored on Monad Testnet</span>';
+    } catch (err) {
+      $status.innerHTML = '<span class="err">❌ ' + (err && err.message ? err.message : String(err)) + '</span>';
+      $flag.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>
