@@ -22,7 +22,7 @@ module.exports = {
       url: MONAD_TESTNET_RPC,
       chainId: MONAD_CHAIN_ID,
       accounts: PRIVATE_KEY ? [PRIVATE_KEY] : [],
-      gasPrice: 50_000_000_000  // 50 gwei (Monad Testnet default)
+      gasPrice: 153_000_000_000  // 153 gwei (1.5x current Monad Testnet ~102 gwei; fixed 10-13)
     }
   },
   etherscan: {
